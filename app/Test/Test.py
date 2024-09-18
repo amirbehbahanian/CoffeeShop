@@ -1,0 +1,110 @@
+from BE_Coffee_Shop import Customer, Barista, Skill, Status, Character,Waitingline, Rushhour, Drink
+import unittest
+import logging
+from dependency_injector import containers, providers
+from datetime import datetime
+import os
+
+csv_path = os.path.join(os.getcwd() ,"Test", "test.csv")
+
+class Container(containers.DeclarativeContainer):
+    barista_factory = providers.Factory(
+        Barista, 
+        csv_file=providers.Dependency(),
+        level=providers.Dependency()
+    )
+    
+    customer_factory = providers.Factory(
+        Customer,
+        position_in_row = providers.Dependency(),
+        arrival_time = providers.Dependency()
+    )
+
+    waiting_line_factory = providers.Factory(
+        Waitingline
+    )
+
+    rush_hour_factory = providers.Factory(
+        Rushhour,
+        order_list = providers.Dependency()
+    )
+
+class testBE(unittest.TestCase):
+    def setUp(self):
+        self.container = Container()
+        self.default_time = datetime(2024, 9, 14)
+
+    def test_barista(self):
+        barista = self.container.barista_factory(csv_file = csv_path, level=Skill.midlevel)
+        self.assertEqual(barista.level.value, 2)
+        self.assertEqual(barista.latte.mu, 5)
+        self.assertEqual(barista.latte.std, 1)
+
+    def test_customer(self):
+        barista = self.container.barista_factory(csv_file = csv_path, level=Skill.midlevel)
+        customer = self.container.customer_factory(position_in_row = 1, character=Character.CASUAL_CARL, arrival_time = self.default_time)
+        customer.order = barista.latte
+        self.assertEqual(customer.position_in_row, 1)
+        self.assertEqual(customer.arrival_time, self.default_time)
+        self.assertEqual(customer.next, None)
+        self.assertEqual(customer.order_time, None)
+        self.assertEqual(customer.status, Status.in_row)
+        self.assertEqual(customer.character, Character.CASUAL_CARL)
+        self.assertEqual(customer.order.mu, 5)
+        self.assertEqual(customer.order.std, 1)
+
+    def test_order_line(self):
+        waiting_line = self.container.waiting_line_factory()
+        for i in range(1,4):
+            globals()[f"customer{i}"] = self.container.customer_factory(
+                position_in_row = i, 
+                character=Character.CASUAL_CARL, 
+                arrival_time = self.default_time)
+            waiting_line.enter_line(globals()[f"customer{i}"])
+        self.assertEqual(waiting_line.count_customers(), 3)
+        _ = waiting_line.quit_line()
+        self.assertEqual(waiting_line.count_customers(), 2)
+        customer = self.container.customer_factory(
+                                                    position_in_row = i, 
+                                                    character=Character.CASUAL_CARL, 
+                                                    arrival_time = self.default_time
+                                                    )
+        waiting_line.enter_line(customer)
+        self.assertEqual(waiting_line.count_customers(), 3)
+
+    def test_rush_hour(self):
+        barista = self.container.barista_factory(csv_file = csv_path, level=Skill.midlevel)
+        waiting_line = self.container.waiting_line_factory()
+        for i in range(1,4):
+            globals()[f"customer{i}"] = self.container.customer_factory(
+                position_in_row = i, 
+                character=Character.CASUAL_CARL, 
+                arrival_time = self.default_time)
+            waiting_line.enter_line(globals()[f"customer{i}"])  
+        rush_hour = self.container.rush_hour_factory(order_list = waiting_line)
+        rush_hour.add_barista(barista=barista)
+        self.assertEqual(rush_hour.barista_list[0].level, Skill.midlevel)   
+
+        rush_hour.find_barista_and_order(time=datetime(2024, 10, 10, 12, 10))
+        self.assertEqual(waiting_line.count_customers(), 2)
+        self.assertEqual(rush_hour.barista_list[0].customer.order_start_time, datetime(2024, 10, 10, 12, 10))
+        self.assertEqual(rush_hour.barista_list[0].customer.status, Status.ordering)
+        rush_hour.find_barista_and_order(time=datetime(2024, 10, 10, 12, 10, 50))
+        self.assertEqual(rush_hour.drink_wait_list[0].status, Status.waiting_for_drink)
+        self.assertEqual(rush_hour.drink_wait_list[0].order_time, datetime(2024, 10, 10, 12, 10, 50))
+        self.assertIsInstance(rush_hour.drink_wait_list[0].order, Drink)
+        save_path = os.path.join(os.getcwd(), 'my_logger.out')
+        if os.path.exists(save_path):
+            os.remove(save_path)
+        logger = logging.getLogger('CoffeeShopLogger')
+        logger.setLevel(logging.INFO)
+        file_handler = logging.FileHandler(save_path)
+        file_handler.setLevel(logging.INFO)
+        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        file_handler.setFormatter(formatter)
+        logger.addHandler(file_handler)
+        rush_hour.serve_drink_wait_list(time=datetime(2024, 10, 10, 12, 25, 50), logger=logger)
+        self.assertTrue(os.path.exists(save_path))
+
+if __name__=="__main__":
+    unittest.main()
