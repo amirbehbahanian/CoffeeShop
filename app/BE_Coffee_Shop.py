@@ -1,10 +1,17 @@
 from enum import Enum
-from datetime import datetime
+from datetime import datetime, timedelta
 import csv
+import pika.connection
 from scipy import stats
 import numpy as np
 import random
+import time
+import pika
+import json
+import os
 import logging
+from dependency_injector import containers, providers
+
 
 class Drink:
     def __init__(self, name, mean, std):
@@ -149,7 +156,100 @@ class Rushhour:
             if k==1:
                 self.drink_wait_list.pop()
                 logger.info(f"Arrival: {c.arrival_time} | In front of barista: {c.order_start_time} | Ordering time: {c.order_time} | Order: {c.order.name} | Time to ready: {time - c.order_time}")
-                
+
+class Container(containers.DeclarativeContainer):
+    barista_factory = providers.Factory(
+        Barista, 
+        csv_file=providers.Dependency(),
+        level=providers.Dependency()
+    )
+    
+    customer_factory = providers.Factory(
+        Customer,
+        position_in_row = providers.Dependency(),
+        arrival_time = providers.Dependency()
+    )
+
+    waiting_line_factory = providers.Factory(
+        Waitingline
+    )
+
+    rush_hour_factory = providers.Factory(
+        Rushhour,
+        order_list = providers.Dependency()
+    )
+
+
+class Simulation:
+    def __init__(self, menu_path, queue_name="run_simulation", host="localhost") -> None:
+        self.queue_name = queue_name
+        self.host = host
+        self.connection = None
+        self.channel = None
+        self.time = datetime(2024, 10, 10, 8, 0, 0)
+        self.csv_path = menu_path
+        self.container = Container()
+        self.customer_number = 0
+        # ====================== Logger ======================
+        save_path = os.path.join(os.getcwd(), 'my_logger.out')
+        if os.path.exists(save_path):
+            os.remove(save_path)
+        self.logger = logging.getLogger('CoffeeShopLogger')
+        self.logger.setLevel(logging.INFO)
+        file_handler = logging.FileHandler(save_path)
+        file_handler.setLevel(logging.INFO)
+        formatter = logging.Formatter('%(levelname)s - %(message)s')
+        file_handler.setFormatter(formatter)
+        self.logger.addHandler(file_handler)
+
+    def connect(self):
+        self.connection = pika.BlockingConnection(pika.ConnectionParameters(self.host))
+        self.channel = self.connection.channel()
+
+    def declare_queue(self):
+        self.channel.queue_declare(queue=self.queue_name, durable=True)
+    
+    def open_shop(self, time_step, logger):
+        self.connect()
+        self.declare_queue()
+
+        self.logger.info("Connection with RMQ is established ...")
+        waiting_line = self.container.waiting_line_factory()
+        rush_hour = self.container.rush_hour_factory(order_list = waiting_line)
+        while True:
+            method_frame, properties, body= self.channel.basic_get(queue=self.queue_name, auto_ack=True)
+            
+            if method_frame:
+                message = body.decode()
+                message_dict = json.load(message)
+
+                if message_dict['barista']>0:
+                    for b in message_dict['barista']['employees']:
+                        level = b['level_index']
+                        barista = self.container.barista_factory(csv_file = self.csv_path, level=Status(level))
+                        rush_hour.add_barista(barista=barista)
+                if message_dict['customer']>0:
+                    for c in message_dict['customer']['people']:
+                        self.container.customer_factory(
+                                                        position_in_row = self.customer_number, 
+                                                        character=Character(c['character_index']), 
+                                                        arrival_time = self.time)
+                        waiting_line.enter_line(globals()[f"customer{i}"])
+                        self.customer_number+=1
+
+                rush_hour.find_barista_and_order(time=self.time)
+                rush_hour.serve_drink_wait_list(time=self.time, logger=self.logger)
+
+                time.sleep(time_step)
+            else:
+                time.sleep(time_step)
+            
+            self.time+=timedelta(minutes=1)
+
+    def close_shop(self):
+        if self.connection and not self.connection.is_closed:
+            self.connection.close()
+
 if __name__=="__main__":
     default_time = datetime(2024, 9, 14)
     waiting_line = Waitingline()
