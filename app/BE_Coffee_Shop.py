@@ -193,6 +193,8 @@ class Simulation:
         # ====================== Logger ======================
         save_path = os.path.join(os.getcwd(), 'my_logger.out')
         if os.path.exists(save_path):
+            for handler in logging.getLogger('CoffeeShopLogger').handlers:
+                handler.close()
             os.remove(save_path)
         self.logger = logging.getLogger('CoffeeShopLogger')
         self.logger.setLevel(logging.INFO)
@@ -230,11 +232,11 @@ class Simulation:
                         rush_hour.add_barista(barista=barista)
                 if message_dict['customer']>0:
                     for c in message_dict['customer']['people']:
-                        self.container.customer_factory(
-                                                        position_in_row = self.customer_number, 
-                                                        character=Character(c['character_index']), 
-                                                        arrival_time = self.time)
-                        waiting_line.enter_line(globals()[f"customer{i}"])
+                        globals()[f"customer{self.customer_number}"] = self.container.customer_factory(
+                                                                                                        position_in_row = self.customer_number, 
+                                                                                                        character=Character(c['character_index']), 
+                                                                                                        arrival_time = self.time)
+                        waiting_line.enter_line(globals()[f"customer{self.customer_number}"])
                         self.customer_number+=1
 
                 rush_hour.find_barista_and_order(time=self.time)
@@ -246,17 +248,59 @@ class Simulation:
             
             self.time+=timedelta(minutes=1)
 
+
+    def start_consuming(self, max_iterations=None):
+        self.connect()
+        self.declare_queue()
+
+        try:
+            iterations = 0
+            while True:
+                method_frame, properties, body = self.channel.basic_get(queue=self.queue_name, auto_ack=True)
+
+                if method_frame:
+                    message = body.decode()
+                    message_dict = json.loads(message)
+                    print(message_dict)
+
+                    if max_iterations is not None:
+                        iterations += 1
+                        if iterations >= max_iterations:
+                            break
+                else:
+                    pass
+        except KeyboardInterrupt:
+            exit()
+
     def close_shop(self):
         if self.connection and not self.connection.is_closed:
             self.connection.close()
 
-if __name__=="__main__":
-    default_time = datetime(2024, 9, 14)
-    waiting_line = Waitingline()
-    for i in range(1,4):
-        globals()[f"customer{i}"] = Customer(
-            position_in_row = i, 
-            character=Character.CASUAL_CARL, 
-            arrival_time = default_time)
-        waiting_line.enter_line(globals()[f"customer{i}"])
-    print(waiting_line)
+class RabbitMQProducer:
+    def __init__(self, queue_name='task_queue', host='localhost'):
+        self.queue_name = queue_name
+        self.host = host
+        self.connection = None
+        self.channel = None
+
+    def connect(self):
+        self.connection = pika.BlockingConnection(pika.ConnectionParameters(self.host))
+        self.channel = self.connection.channel()
+
+    def declare_queue(self):
+        self.channel.queue_declare(queue=self.queue_name, durable=True)
+
+    def send_message(self, message_dict):
+        self.connect()
+        self.declare_queue()
+        message = json.dumps(message_dict)
+
+        self.channel.basic_publish(
+            exchange='',
+            routing_key=self.queue_name,
+            body=message,
+            properties=pika.BasicProperties(
+                delivery_mode=2,
+            )
+        )
+        self.connection.close()
