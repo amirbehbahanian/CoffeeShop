@@ -146,7 +146,7 @@ class testBE(unittest.TestCase):
         simulation = Simulation(menu_path='test.csv')
         
         with patch('builtins.print') as mocked_print:
-            simulation.start_consuming(max_iterations=1)  # Limit iterations to 1 to prevent infinite loop
+            simulation.consuming_test(max_iterations=1)  # mock the print and set max iteration to 1
 
         mock_blocking_connection.assert_called_once_with(pika.ConnectionParameters('localhost'))
         mock_connection.channel.assert_called_once()

@@ -19,10 +19,12 @@ class Drink:
         self.std = std
         self.name = name
 
+
 class Skill(Enum):
     Amature = 1
     midlevel = 2
     expert = 3
+
 
 class Barista:
     def __init__(self, csv_file, level):
@@ -33,13 +35,13 @@ class Barista:
         self.drink_list = []
         self._read_csv(csv_file)
         self.customer = None
-    
+
     def _read_csv(self, csv_file):
-        with open(csv_file, 'r') as file:
+        with open(csv_file, "r") as file:
             reader = csv.reader(file)
-            next(reader)  
+            next(reader)
             for row in reader:
-                drink_name = row[0].strip().lower() 
+                drink_name = row[0].strip().lower()
                 match self.level:
                     case Skill.Amature:
                         mean = float(row[1]) + 0.2 * float(row[1])
@@ -55,34 +57,56 @@ class Barista:
                 self.__dict__[drink_name] = drink
                 self.drink_list.append(drink_name)
 
+
 class Status(Enum):
     in_row = 1
     ordering = 2
     waiting_for_drink = 3
 
+
 class Character(Enum):
-    IMPULSIVE_IRENE = (10, "Enthusiastic but sometimes a little short-tempered. Generally polite, but their impulsiveness can make them seem impatient.")
-    SPEEDY_SAM = (20, "Typically calm and polite but focused on efficiency. Doesn't like to waste time, but remains courteous.")
-    DELIBERATE_DAN = (30, "Patient and polite, but can be perceived as a bit indecisive. Likely to ask detailed questions before making a decision.")
-    CASUAL_CARL = (45, "Laid-back and easygoing, with a polite and friendly demeanor. Not in a hurry, so rarely shows any signs of frustration.")
+    IMPULSIVE_IRENE = (
+        10,
+        "Enthusiastic but sometimes a little short-tempered. Generally polite, but their impulsiveness can make them seem impatient.",
+    )
+    SPEEDY_SAM = (
+        20,
+        "Typically calm and polite but focused on efficiency. Doesn't like to waste time, but remains courteous.",
+    )
+    DELIBERATE_DAN = (
+        30,
+        "Patient and polite, but can be perceived as a bit indecisive. Likely to ask detailed questions before making a decision.",
+    )
+    CASUAL_CARL = (
+        45,
+        "Laid-back and easygoing, with a polite and friendly demeanor. Not in a hurry, so rarely shows any signs of frustration.",
+    )
+
 
 class Customer:
-    def __init__(self, position_in_row:int, character:Character, arrival_time:datetime) -> None:
+    def __init__(
+        self, position_in_row: int, character: Character, arrival_time: datetime
+    ) -> None:
         self.position_in_row = position_in_row
-        self.arrival_time:datetime = arrival_time
+        self.arrival_time: datetime = arrival_time
         self.status = Status.in_row
         self.character = character
-        self.order_start_time:datetime = None
-        self.order_time:datetime = None
+        self.order_start_time: datetime = None
+        self.order_time: datetime = None
         self.next = None
-        self.order:Drink = None
-        
-    def is_drink_ready(self, current_time:datetime):
+        self.order: Drink = None
+
+    def is_drink_ready(self, current_time: datetime):
         time_waited = current_time - self.order_time
-        p = stats.norm.cdf(int(time_waited.total_seconds() / 60), loc=self.order.mu, scale=self.order.std)
-        k = np.random.choice([0,1],p = [1-p,p])
+        p = stats.norm.cdf(
+            int(time_waited.total_seconds() / 60),
+            loc=self.order.mu,
+            scale=self.order.std,
+        )
+        k = np.random.choice([0, 1], p=[1 - p, p])
         return k
-    
+
+
 class Waitingline:
     def __init__(self) -> None:
         self.last = None
@@ -91,22 +115,24 @@ class Waitingline:
         node = self.last
         nodes = []
         while node is not None:
-            nodes.append(f"Position: {node.position_in_row} - Arrival: {node.arrival_time}")
+            nodes.append(
+                f"Position: {node.position_in_row} - Arrival: {node.arrival_time}"
+            )
             node = node.next
         nodes.append("reached the counter")
         return " -> ".join(nodes)
-    
+
     def __iter__(self):
         node = self.last
         while node is not None:
             yield node
             node = node.next
-    
+
     def count_customers(self):
         count = 1
         node = self.last
         while node.next is not None:
-            count+=1
+            count += 1
             node = node.next
         return count
 
@@ -117,8 +143,8 @@ class Waitingline:
             node = node.next
         node_prev.next = None
         return node
-    
-    def enter_line(self, new_node:Customer):
+
+    def enter_line(self, new_node: Customer):
         if self.last is None:
             self.last = new_node
         else:
@@ -126,16 +152,17 @@ class Waitingline:
             new_node.next = node
             self.last = new_node
 
+
 class Rushhour:
-    def __init__(self, order_list:Waitingline) -> None:
+    def __init__(self, order_list: Waitingline) -> None:
         self.order_list = order_list
         self.barista_list = []
         self.drink_wait_list = []
 
-    def add_barista(self, barista:Barista):
+    def add_barista(self, barista: Barista):
         self.barista_list.append(barista)
 
-    def find_barista_and_order(self, time:datetime):
+    def find_barista_and_order(self, time: datetime):
         for b in self.barista_list:
             if b.customer is None:
                 b.customer = self.order_list.quit_line()
@@ -153,35 +180,33 @@ class Rushhour:
     def serve_drink_wait_list(self, time, logger):
         for c in self.drink_wait_list[-1:]:
             k = c.is_drink_ready(time)
-            if k==1:
+            if k == 1:
                 self.drink_wait_list.pop()
-                logger.info(f"Arrival: {c.arrival_time} | In front of barista: {c.order_start_time} | Ordering time: {c.order_time} | Order: {c.order.name} | Time to ready: {time - c.order_time}")
+                logger.info(
+                    f"Arrival: {c.arrival_time} | In front of barista: {c.order_start_time} | Ordering time: {c.order_time} | Order: {c.order.name} | Time to ready: {time - c.order_time}"
+                )
+
 
 class Container(containers.DeclarativeContainer):
     barista_factory = providers.Factory(
-        Barista, 
-        csv_file=providers.Dependency(),
-        level=providers.Dependency()
+        Barista, csv_file=providers.Dependency(), level=providers.Dependency()
     )
-    
+
     customer_factory = providers.Factory(
         Customer,
-        position_in_row = providers.Dependency(),
-        arrival_time = providers.Dependency()
+        position_in_row=providers.Dependency(),
+        arrival_time=providers.Dependency(),
     )
 
-    waiting_line_factory = providers.Factory(
-        Waitingline
-    )
+    waiting_line_factory = providers.Factory(Waitingline)
 
-    rush_hour_factory = providers.Factory(
-        Rushhour,
-        order_list = providers.Dependency()
-    )
+    rush_hour_factory = providers.Factory(Rushhour, order_list=providers.Dependency())
 
 
 class Simulation:
-    def __init__(self, menu_path, queue_name="run_simulation", host="localhost") -> None:
+    def __init__(
+        self, menu_path, queue_name="run_simulation", host="localhost"
+    ) -> None:
         self.queue_name = queue_name
         self.host = host
         self.connection = None
@@ -191,16 +216,16 @@ class Simulation:
         self.container = Container()
         self.customer_number = 0
         # ====================== Logger ======================
-        save_path = os.path.join(os.getcwd(), 'my_logger.out')
+        save_path = os.path.join(os.getcwd(), "my_logger.out")
         if os.path.exists(save_path):
-            for handler in logging.getLogger('CoffeeShopLogger').handlers:
+            for handler in logging.getLogger("CoffeeShopLogger").handlers:
                 handler.close()
             os.remove(save_path)
-        self.logger = logging.getLogger('CoffeeShopLogger')
+        self.logger = logging.getLogger("CoffeeShopLogger")
         self.logger.setLevel(logging.INFO)
         file_handler = logging.FileHandler(save_path)
         file_handler.setLevel(logging.INFO)
-        formatter = logging.Formatter('%(levelname)s - %(message)s')
+        formatter = logging.Formatter("%(levelname)s - %(message)s")
         file_handler.setFormatter(formatter)
         self.logger.addHandler(file_handler)
 
@@ -210,34 +235,43 @@ class Simulation:
 
     def declare_queue(self):
         self.channel.queue_declare(queue=self.queue_name, durable=True)
-    
+
     def open_shop(self, time_step, logger):
         self.connect()
         self.declare_queue()
 
         self.logger.info("Connection with RMQ is established ...")
         waiting_line = self.container.waiting_line_factory()
-        rush_hour = self.container.rush_hour_factory(order_list = waiting_line)
+        rush_hour = self.container.rush_hour_factory(order_list=waiting_line)
         while True:
-            method_frame, properties, body= self.channel.basic_get(queue=self.queue_name, auto_ack=True)
-            
+            method_frame, properties, body = self.channel.basic_get(
+                queue=self.queue_name, auto_ack=True
+            )
+
             if method_frame:
                 message = body.decode()
                 message_dict = json.load(message)
 
-                if message_dict['barista']>0:
-                    for b in message_dict['barista']['employees']:
-                        level = b['level_index']
-                        barista = self.container.barista_factory(csv_file = self.csv_path, level=Status(level))
+                if message_dict["barista"]["count"] > 0:
+                    for b in message_dict["barista"]["employees"]:
+                        level = b["level_index"]
+                        barista = self.container.barista_factory(
+                            csv_file=self.csv_path, level=Status(level)
+                        )
                         rush_hour.add_barista(barista=barista)
-                if message_dict['customer']>0:
-                    for c in message_dict['customer']['people']:
-                        globals()[f"customer{self.customer_number}"] = self.container.customer_factory(
-                                                                                                        position_in_row = self.customer_number, 
-                                                                                                        character=Character(c['character_index']), 
-                                                                                                        arrival_time = self.time)
-                        waiting_line.enter_line(globals()[f"customer{self.customer_number}"])
-                        self.customer_number+=1
+                if message_dict["customer"]["count"] > 0:
+                    for c in message_dict["customer"]["people"]:
+                        globals()[f"customer{self.customer_number}"] = (
+                            self.container.customer_factory(
+                                position_in_row=self.customer_number,
+                                character=Character(c["character_index"]),
+                                arrival_time=self.time,
+                            )
+                        )
+                        waiting_line.enter_line(
+                            globals()[f"customer{self.customer_number}"]
+                        )
+                        self.customer_number += 1
 
                 rush_hour.find_barista_and_order(time=self.time)
                 rush_hour.serve_drink_wait_list(time=self.time, logger=self.logger)
@@ -245,18 +279,19 @@ class Simulation:
                 time.sleep(time_step)
             else:
                 time.sleep(time_step)
-            
-            self.time+=timedelta(minutes=1)
 
+            self.time += timedelta(minutes=1)
 
-    def start_consuming(self, max_iterations=None):
+    def consuming_test(self, max_iterations=None):
         self.connect()
         self.declare_queue()
 
         try:
             iterations = 0
             while True:
-                method_frame, properties, body = self.channel.basic_get(queue=self.queue_name, auto_ack=True)
+                method_frame, properties, body = self.channel.basic_get(
+                    queue=self.queue_name, auto_ack=True
+                )
 
                 if method_frame:
                     message = body.decode()
@@ -276,8 +311,9 @@ class Simulation:
         if self.connection and not self.connection.is_closed:
             self.connection.close()
 
+
 class RabbitMQProducer:
-    def __init__(self, queue_name='task_queue', host='localhost'):
+    def __init__(self, queue_name="task_queue", host="localhost"):
         self.queue_name = queue_name
         self.host = host
         self.connection = None
@@ -296,11 +332,11 @@ class RabbitMQProducer:
         message = json.dumps(message_dict)
 
         self.channel.basic_publish(
-            exchange='',
+            exchange="",
             routing_key=self.queue_name,
             body=message,
             properties=pika.BasicProperties(
                 delivery_mode=2,
-            )
+            ),
         )
         self.connection.close()
