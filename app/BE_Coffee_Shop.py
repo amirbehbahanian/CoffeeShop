@@ -178,6 +178,7 @@ class Rushhour:
                     b.customer = None
 
     def serve_drink_wait_list(self, time, logger):
+        to_exit = []
         for c in self.drink_wait_list[-1:]:
             k = c.is_drink_ready(time)
             if k == 1:
@@ -185,6 +186,8 @@ class Rushhour:
                 logger.info(
                     f"Arrival: {c.arrival_time} | In front of barista: {c.order_start_time} | Ordering time: {c.order_time} | Order: {c.order.name} | Time to ready: {time - c.order_time}"
                 )
+                to_exit.append(c.position_in_row)
+        return to_exit
 
 
 class Container(containers.DeclarativeContainer):
@@ -274,7 +277,12 @@ class Simulation:
                         self.customer_number += 1
 
                 rush_hour.find_barista_and_order(time=self.time)
-                rush_hour.serve_drink_wait_list(time=self.time, logger=self.logger)
+                customer_exit = rush_hour.serve_drink_wait_list(
+                    time=self.time, logger=self.logger
+                )
+                if customer_exit:
+                    for number in customer_exit:
+                        del globals()[f"customer{number}"]
 
                 time.sleep(time_step)
             else:
