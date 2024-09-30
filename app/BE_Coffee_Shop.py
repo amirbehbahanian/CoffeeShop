@@ -162,20 +162,24 @@ class Rushhour:
     def add_barista(self, barista: Barista):
         self.barista_list.append(barista)
 
-    def find_barista_and_order(self, time: datetime):
+    def find_barista_and_order(self, time: datetime, logger:logging):
         for b in self.barista_list:
             if b.customer is None:
+                logger.info("A barista is free a customer is sent to be served")
                 b.customer = self.order_list.quit_line()
                 b.customer.order_start_time = time
                 b.customer.status = Status.ordering
             else:
                 waited_time = time - b.customer.order_start_time
                 if waited_time.total_seconds() >= b.customer.character.value[0]:
+                    logger.info("The customer has made a decision and they are ordering their drink")
                     b.customer.status = Status.waiting_for_drink
                     b.customer.order_time = time
                     b.customer.order = b.__dict__[random.choice(b.drink_list)]
                     self.drink_wait_list.append(b.customer)
                     b.customer = None
+                else:
+                    logger.info("The barista has a customer but the customer is still indecisive.")
 
     def serve_drink_wait_list(self, time, logger):
         to_exit = []
@@ -243,7 +247,7 @@ class Simulation:
         self.connect()
         self.declare_queue()
 
-        self.logger.info("Connection with RMQ is established ...")
+        self.logger.info(f"Connection with RMQ is established ...\nStore Opened at {self.time}")
         waiting_line = self.container.waiting_line_factory()
         rush_hour = self.container.rush_hour_factory(order_list=waiting_line)
         while True:
@@ -262,6 +266,9 @@ class Simulation:
                             csv_file=self.csv_path, level=Status(level)
                         )
                         rush_hour.add_barista(barista=barista)
+                        self.logger.info(
+                            f"Adding a barista to rush hour. The barista level is {level}"
+                        )
                 if message_dict["customer"]["count"] > 0:
                     for c in message_dict["customer"]["people"]:
                         globals()[f"customer{self.customer_number}"] = (
@@ -275,6 +282,7 @@ class Simulation:
                             globals()[f"customer{self.customer_number}"]
                         )
                         self.customer_number += 1
+                        self.logger.info(f"Adding a customer to the waiting line. The customer character is : {c["character_index"]}")
 
                 rush_hour.find_barista_and_order(time=self.time)
                 customer_exit: list = rush_hour.serve_drink_wait_list(
@@ -285,6 +293,7 @@ class Simulation:
                         del globals()[f"customer{number}"]
                 if message_dict["close the store"].lower() == "true":
                     self.close_shop()
+                    self.logger.info(f"Closing the store at time {self.time}")
                     return
 
                 time.sleep(time_step)
