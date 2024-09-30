@@ -277,12 +277,15 @@ class Simulation:
                         self.customer_number += 1
 
                 rush_hour.find_barista_and_order(time=self.time)
-                customer_exit = rush_hour.serve_drink_wait_list(
+                customer_exit: list = rush_hour.serve_drink_wait_list(
                     time=self.time, logger=self.logger
                 )
                 if customer_exit:
                     for number in customer_exit:
                         del globals()[f"customer{number}"]
+                if message_dict["close the store"].lower() == "true":
+                    self.close_shop()
+                    return
 
                 time.sleep(time_step)
             else:
@@ -321,6 +324,28 @@ class Simulation:
 
 
 class RabbitMQProducer:
+    """
+    Example of a message dictionary:
+    {
+    barista:
+            {
+                count: 1,
+                employees: [
+                            {level_index: 1}
+                           ]
+            },
+    customer:
+            {
+                count: 2,
+                people: [
+                            {character_index: 1},
+                            {character_index:3}
+                        ]
+            },
+    close_shop: false
+    }
+    """
+
     def __init__(self, queue_name="task_queue", host="localhost"):
         self.queue_name = queue_name
         self.host = host
